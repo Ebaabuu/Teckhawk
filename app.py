@@ -8,28 +8,28 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-# 1. Securely load the API key
+# Securely load the API key
 load_dotenv()
 
-# 2. Set up the Streamlit Web Interface
+# Set up the Streamlit Web Interface
 st.set_page_config(page_title="TechHawk IT Assistant", page_icon="🦅")
-st.title("🦅 TechHawk IT Help Desk")
+st.title("TechHawk IT Help Desk")
 st.markdown("Welcome to the secure Edwards Campus IT Assistant.")
 
-# 3. Connect the AI and Database (Cached for speed)
+# Connect the AI and Database
 @st.cache_resource
 def load_ai_components():
-    # A. Concept Translator
+    # 1. Concept Translator
     embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
     
-    # B. Connect to local database
+    # 2. Connect to local database
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) 
     
-    # C. Set up the Brain
+    # 3. Set up the Brain
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
     
-    # D. Give the AI its strict instructions
+    # 4. Give the AI its strict instructions
     system_prompt = (
         "You are the official TechHawk IT Help Desk Assistant for the Edwards Campus. "
         "Use the following pieces of retrieved context to answer the question. "
@@ -42,11 +42,11 @@ def load_ai_components():
         ("human", "{input}"),
     ])
     
-    # Helper function to format the retrieved documents
+    # Helper function to add newlines to the retrieved documents
     def format_docs(docs):
         return "\n\n".join(doc.page_content for doc in docs)
     
-    # E. The Modern LCEL Pipeline (Bypasses the broken 'chains' module)
+    # 5. The Modern LCEL Pipeline (Bypasses the broken 'chains' module)
     rag_chain = (
         {"context": retriever | format_docs, "input": RunnablePassthrough()}
         | prompt
@@ -59,26 +59,26 @@ def load_ai_components():
 # Initialize the pipeline
 rag_chain = load_ai_components()
 
-# 4. Initialize chat history in session state
+# Initialize chat history in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 5. Display past chat messages
+# Display past chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 5.5 Initialize the cooldown timer in session state
+# Initialize the cooldown timer in session state
 if "last_msg_time" not in st.session_state:
     st.session_state.last_msg_time = 0
 
-# 6. Handle new user input
+# Handle new user input
 if user_query := st.chat_input("Ask an IT question..."):
     
-    # DEFENSE 1: The Cooldown Timer (5 seconds)
+    # DOS Defense: Cooldown timer and Error Catching
     current_time = time.time()
     if current_time - st.session_state.last_msg_time < 5:
-        st.warning("⏳ Please wait a few seconds before sending another message.")
+        st.warning("Please wait a few seconds before sending another message.")
     else:
         # Update the timer to the current time
         st.session_state.last_msg_time = current_time
@@ -94,8 +94,7 @@ if user_query := st.chat_input("Ask an IT question..."):
                 ai_answer = rag_chain.invoke(user_query)
                 
             except Exception as e:
-                # DEFENSE 2: The Safety Net
-                # If Google crashes or rate-limits us, show a polite error instead of crashing the app
+                # If Google crashes or rate-limits us, show an error instead of crashing the app
                 ai_answer = "The system is currently receiving too many requests. Please try again in a minute."
                 print(f"API Error encountered: {e}") # Logs the real error in your terminal
         
