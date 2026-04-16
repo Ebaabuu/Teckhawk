@@ -25,7 +25,7 @@ def load_rag_chain():
         retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) 
         
         # 3. Set up the Brain (Using 1.5-flash for stability)
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
         
         # 4. Your Strict IT Help Desk Instructions
         system_prompt = (
