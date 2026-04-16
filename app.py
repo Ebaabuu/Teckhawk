@@ -4,6 +4,7 @@ import time
 from sidebar import render_sidebar
 from styles import apply_custom_styles
 from brain import load_rag_chain
+from langchain_core.messages import HumanMessage, AIMessage
 
 # 1. SETUP: Page configuration and Global Styles
 st.set_page_config(page_title="TechHawk IT Assistant", layout="wide")
@@ -90,23 +91,31 @@ if user_input := st.chat_input("Ask an IT question...", accept_file="multiple"):
 # 8. AI GENERATION: Process the query through the RAG chain
 if curr_id and history and history[-1]["role"] == "user":
     with st.spinner("TechHawk is thinking..."):
-        # Start a timer to prevent the AI from responding too fast
         start_time = time.time()
         
         try:
-            # Send the user query to the AI brain
-            ai_answer = st.session_state.rag_chain.invoke(history[-1]["content"])
+            # --- NEW: Convert Streamlit history to LangChain message format ---
+            # We use history[:-1] to grab everything EXCEPT the current question
+            lc_history = []
+            for msg in history[:-1]: 
+                if msg["role"] == "user":
+                    lc_history.append(HumanMessage(content=msg["content"]))
+                else:
+                    lc_history.append(AIMessage(content=msg["content"]))
+            
+            # --- NEW: Send a dictionary with input AND history to the chain ---
+            ai_answer = st.session_state.rag_chain.invoke({
+                "input": history[-1]["content"],
+                "chat_history": lc_history
+            })
+            
         except Exception as e:
-            # Log the technical error in the terminal for your eyes only
             print(f"API Error encountered: {e}")
-            # Show the user the "Busy" message you had before
             ai_answer = "The system is currently busy. Please try again in a minute."
         
-        # Ensure the spinner stays visible for at least 1.5 seconds for better UI feel
         elapsed = time.time() - start_time
         if elapsed < 1.5:
             time.sleep(1.5 - elapsed)
             
-    # Save the assistant's answer and refresh the screen
     st.session_state.chat_sessions[curr_id]["messages"].append({"role": "assistant", "content": ai_answer})
     st.rerun()
