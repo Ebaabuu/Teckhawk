@@ -1,16 +1,22 @@
 import os
 import streamlit as st
+from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-# Hardcoding your provided key to ensure it works immediately
-os.environ["GOOGLE_API_KEY"] = "AIzaSyBzpae9i6m4StgnEzlBTvb3sC34Qea7enE"
+# This looks for the .env file and loads the key privately
+load_dotenv()
 
 def load_rag_chain():
     try:
+        # Check if the key exists before starting
+        if not os.getenv("GOOGLE_API_KEY"):
+            st.error("API Key missing! Please check your .env file.")
+            return None
+        
         # 1. Concept Translator
         embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
         
