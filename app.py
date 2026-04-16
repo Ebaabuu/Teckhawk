@@ -1,128 +1,112 @@
 import streamlit as st
 import uuid
-import os
+import time
 from sidebar import render_sidebar
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+from styles import apply_custom_styles
+from brain import load_rag_chain
 
-# 1. Setup
-load_dotenv()
+# 1. SETUP: Page configuration and Global Styles
 st.set_page_config(page_title="TechHawk IT Assistant", layout="wide")
+apply_custom_styles()
 
-# THE FULL CSS
-st.markdown("""
-    <style>
-    .centered-header { text-align: center; margin-top: -20px; }
-    .centered-subheader { text-align: center; color: #666; margin-bottom: 30px; }
-    .main .block-container { max-width: 1100px; }
+# 2. AI INITIALIZATION: Load the RAG logic once and store it
+if "rag_chain" not in st.session_state:
+    st.session_state.rag_chain = load_rag_chain()
 
-    /* --- HAMBURGER ICON --- */
-    [data-testid="stSidebarCollapsedControl"] button svg { display: none !important; }
-    [data-testid="stSidebarCollapsedControl"] button::before {
-        content: "☰" !important; font-size: 26px !important; color: black !important; font-weight: bold !important;
-    }
-
-    /* --- SIDEBAR PILLS & THREE DOTS --- */
-    [data-testid="stVerticalBlockBorderWrapper"] > div > div > div[data-testid="stVerticalBlock"] > div { position: relative !important; }
-    
-    [data-testid="stSidebar"] .stButton > button {
-        border-radius: 20px !important; background-color: #e0e0e0 !important; color: black !important;
-        height: 40px !important; text-align: left !important; width: 100% !important; padding-left: 15px !important;
-    }
-
-    [data-testid="stSidebar"] div[data-testid="stPopover"] {
-        position: absolute !important; right: 12px !important; margin-top: -55px !important; 
-        width: 30px !important; height: 40px !important; z-index: 99 !important; opacity: 0; pointer-events: none;
-    }
-
-    [data-testid="stVerticalBlock"] > div:hover div[data-testid="stPopover"] { opacity: 1 !important; pointer-events: auto !important; }
-
-    [data-testid="stSidebar"] [data-testid="stPopover"] svg { display: none !important; }
-    [data-testid="stSidebar"] [data-testid="stPopover"] button div:last-child { display: none !important; }
-    [data-testid="stSidebar"] [data-testid="stPopover"] button::before { content: "⋮"; font-size: 22px; color: #444; font-weight: bold; }
-    [data-testid="stSidebar"] [data-testid="stPopover"] button { background: transparent !important; border: none !important; box-shadow: none !important; }
-
-    /* --- TOOL MENU LEFT ALIGNMENT --- */
-    div[data-testid="stPopoverContent"] { background-color: white !important; border: 1px solid #ddd !important; border-radius: 8px !important; padding: 4px 0px !important; min-width: 135px !important; }
-    div[data-testid="stPopoverContent"] button, div[data-testid="stPopoverContent"] button > div { display: flex !important; justify-content: flex-start !important; align-items: center !important; width: 100% !important; }
-    div[data-testid="stPopoverContent"] button p { margin: 0 !important; text-align: left !important; width: 100% !important; }
-
-    /* --- CHAT MIDDLE BARRIER --- */
-    [data-testid="stChatMessage"]:has([data-testid="stChatMessageUserAvatar"]) { flex-direction: row-reverse !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 2. AI Logic
-@st.cache_resource
-def load_ai_components():
-    try:
-        embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
-        vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) 
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
-        system_prompt = ("You are the official TechHawk IT Help Desk Assistant. Context:\n{context}")
-        prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{input}")])
-        return ({"context": retriever | (lambda docs: "\n\n".join(d.page_content for d in docs)), "input": RunnablePassthrough()} | prompt | llm | StrOutputParser())
-    except: return None
-
-rag_chain = load_ai_components()
-
-# 3. Session State
+# 3. SESSION STATE: Keep track of history and current active chat
 if "chat_sessions" not in st.session_state: st.session_state.chat_sessions = {}
 if "current_chat_id" not in st.session_state: st.session_state.current_chat_id = None
 
-# 4. Dialogs
+# 4. DIALOGS: These create the professional Side-by-Side button popups
 @st.dialog("Delete Chat")
 def confirm_delete(cid):
-    st.write("Delete this chat?")
-    if st.button("Yes", use_container_width=True, type="primary"):
-        del st.session_state.chat_sessions[cid]
-        if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
-        st.rerun()
+    st.write("Do you want to delete this chat?")
+    c1, c2 = st.columns(2) # Side-by-side layout
+    with c1:
+        if st.button("Yes", use_container_width=True, type="primary"):
+            del st.session_state.chat_sessions[cid]
+            if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
+            st.rerun()
+    with c2:
+        if st.button("No", use_container_width=True): st.rerun()
 
 @st.dialog("Share Chat")
 def show_share_link(cid, title):
     st.write(f"### {title}")
-    st.code(f"https://techhawk-it.app/?chat={cid}")
+    share_url = f"https://techhawk-it-assistant.streamlit.app/?chat={cid}"
+    st.code(share_url, language="text")
+    if st.button("Close", use_container_width=True): st.rerun()
 
 @st.dialog("Rename Chat")
 def rename_chat(cid, current_title):
-    new_title = st.text_input("Rename", value=current_title)
-    if st.button("Save"):
-        st.session_state.chat_sessions[cid]['title'] = new_title; st.rerun()
+    st.write("Enter a new name for this chat:")
+    new_title = st.text_input("Chat Name", value=current_title, label_visibility="collapsed")
+    c1, c2 = st.columns(2) # Side-by-side layout
+    with c1:
+        if st.button("Save", use_container_width=True, type="primary"):
+            if new_title.strip():
+                st.session_state.chat_sessions[cid]['title'] = new_title.strip()
+                st.rerun()
+    with c2:
+        if st.button("Cancel", use_container_width=True): st.rerun()
 
-# 5. Render Sidebar
+# 5. SIDEBAR: Render the history and search tools
 render_sidebar(show_share_link, rename_chat, confirm_delete)
 
-# 6. Main Chat Logic
-st.markdown("<h1 class='centered-header'>TechHawk IT Help Desk</h1>", unsafe_allow_html=True)
-# RESTORED SUBHEADER
-st.markdown("<p class='centered-subheader'>Welcome to the Edwards Campus IT Assistant.</p>", unsafe_allow_html=True)
-
+# 6. MAIN INTERFACE: Display the conversation
 curr_id = st.session_state.current_chat_id
 history = st.session_state.chat_sessions[curr_id]["messages"] if curr_id else []
 
-for m in history:
-    col_left, col_right = st.columns(2)
-    with (col_right if m["role"] == "user" else col_left):
-        with st.chat_message(m["role"]): st.markdown(m["content"])
+if not history:
+    st.markdown("<div style='text-align: center; margin-top: 50px;'><h1>TechHawk IT Help Desk</h1><p>Welcome to the secure Edwards Campus IT Assistant.</p></div>", unsafe_allow_html=True)
 
-if user_query := st.chat_input("Ask an IT question..."):
+for m in history:
+    col_l, col_r = st.columns(2)
+    if m["role"] == "user":
+        with col_r:
+            with st.chat_message("user"):
+                st.markdown(m["content"])
+                if m.get("file"): st.caption(f"File: {m['file']}")
+    else:
+        with col_l:
+            with st.chat_message("assistant"): st.markdown(m["content"])
+
+# 7. INPUT HANDLING: Capture text and multiple file uploads
+if user_input := st.chat_input("Ask an IT question...", accept_file="multiple"):
+    text = user_input["text"]
+    files = user_input["files"]
+    title = text[:40] if text.strip() else (files[0].name[:40] if files else "New Chat")
+    
     if not curr_id:
         curr_id = str(uuid.uuid4())
-        st.session_state.chat_sessions[curr_id] = {"title": user_query[:30], "pinned": False, "messages": []}
+        st.session_state.chat_sessions[curr_id] = {"title": title, "pinned": False, "messages": []}
         st.session_state.current_chat_id = curr_id
     
-    st.session_state.chat_sessions[curr_id]["messages"].append({"role": "user", "content": user_query})
-    
-    try:
-        ai_answer = rag_chain.invoke(user_query) if rag_chain else "AI not configured."
-    except:
-        ai_answer = "The system is currently busy."
+    st.session_state.chat_sessions[curr_id]["messages"].append({
+        "role": "user", "content": text if text.strip() else "[File Uploaded]", "file": files[0].name if files else None
+    })
+    st.rerun()
+
+# 8. AI GENERATION: Process the query through the RAG chain
+if curr_id and history and history[-1]["role"] == "user":
+    with st.spinner("TechHawk is thinking..."):
+        # Start a timer to prevent the AI from responding too fast
+        start_time = time.time()
         
+        try:
+            # Send the user query to the AI brain
+            ai_answer = st.session_state.rag_chain.invoke(history[-1]["content"])
+        except Exception as e:
+            # Log the technical error in the terminal for your eyes only
+            print(f"API Error encountered: {e}")
+            # Show the user the "Busy" message you had before
+            ai_answer = "The system is currently busy. Please try again in a minute."
+        
+        # Ensure the spinner stays visible for at least 1.5 seconds for better UI feel
+        elapsed = time.time() - start_time
+        if elapsed < 1.5:
+            time.sleep(1.5 - elapsed)
+            
+    # Save the assistant's answer and refresh the screen
     st.session_state.chat_sessions[curr_id]["messages"].append({"role": "assistant", "content": ai_answer})
     st.rerun()
