@@ -1,104 +1,112 @@
 import streamlit as st
-import os
+import uuid
 import time
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
+from sidebar import render_sidebar
+from styles import apply_custom_styles
+from brain import load_rag_chain
 
-# Securely load the API key
-load_dotenv()
+# 1. SETUP: Page configuration and Global Styles
+st.set_page_config(page_title="TechHawk IT Assistant", layout="wide")
+apply_custom_styles()
 
-# Set up the Streamlit Web Interface
-st.set_page_config(page_title="TechHawk IT Assistant", page_icon="🦅")
-st.title("TechHawk IT Help Desk")
-st.markdown("Welcome to the secure Edwards Campus IT Assistant.")
+# 2. AI INITIALIZATION: Load the RAG logic once and store it
+if "rag_chain" not in st.session_state:
+    st.session_state.rag_chain = load_rag_chain()
 
-# Connect the AI and Database
-@st.cache_resource
-def load_ai_components():
-    # 1. Concept Translator
-    embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
-    
-    # 2. Connect to local database
-    vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) 
-    
-    # 3. Set up the Brain
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
-    
-    # 4. Give the AI its strict instructions
-    system_prompt = (
-        "You are the official TechHawk IT Help Desk Assistant for the Edwards Campus. "
-        "Use the following pieces of retrieved context to answer the question. "
-        "If the answer is not in the context, say exactly: 'I cannot answer that based on the official IT manuals.' "
-        "Do not guess or make up information. Keep the answer concise and helpful.\n\n"
-        "Context:\n{context}"
-    )
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}"),
-    ])
-    
-    # Helper function to add newlines to the retrieved documents
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
-    
-    # 5. The Modern LCEL Pipeline (Bypasses the broken 'chains' module)
-    rag_chain = (
-        {"context": retriever | format_docs, "input": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    
-    return rag_chain
+# 3. SESSION STATE: Keep track of history and current active chat
+if "chat_sessions" not in st.session_state: st.session_state.chat_sessions = {}
+if "current_chat_id" not in st.session_state: st.session_state.current_chat_id = None
 
-# Initialize the pipeline
-rag_chain = load_ai_components()
+# 4. DIALOGS: These create the professional Side-by-Side button popups
+@st.dialog("Delete Chat")
+def confirm_delete(cid):
+    st.write("Do you want to delete this chat?")
+    c1, c2 = st.columns(2) # Side-by-side layout
+    with c1:
+        if st.button("Yes", use_container_width=True, type="primary"):
+            del st.session_state.chat_sessions[cid]
+            if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
+            st.rerun()
+    with c2:
+        if st.button("No", use_container_width=True): st.rerun()
 
-# Initialize chat history in session state
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+@st.dialog("Share Chat")
+def show_share_link(cid, title):
+    st.write(f"### {title}")
+    share_url = f"https://techhawk-it-assistant.streamlit.app/?chat={cid}"
+    st.code(share_url, language="text")
+    if st.button("Close", use_container_width=True): st.rerun()
 
-# Display past chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+@st.dialog("Rename Chat")
+def rename_chat(cid, current_title):
+    st.write("Enter a new name for this chat:")
+    new_title = st.text_input("Chat Name", value=current_title, label_visibility="collapsed")
+    c1, c2 = st.columns(2) # Side-by-side layout
+    with c1:
+        if st.button("Save", use_container_width=True, type="primary"):
+            if new_title.strip():
+                st.session_state.chat_sessions[cid]['title'] = new_title.strip()
+                st.rerun()
+    with c2:
+        if st.button("Cancel", use_container_width=True): st.rerun()
 
-# Initialize the cooldown timer in session state
-if "last_msg_time" not in st.session_state:
-    st.session_state.last_msg_time = 0
+# 5. SIDEBAR: Render the history and search tools
+render_sidebar(show_share_link, rename_chat, confirm_delete)
 
-# Handle new user input
-if user_query := st.chat_input("Ask an IT question..."):
-    
-    # DOS Defense: Cooldown timer and Error Catching
-    current_time = time.time()
-    if current_time - st.session_state.last_msg_time < 5:
-        st.warning("Please wait a few seconds before sending another message.")
+# 6. MAIN INTERFACE: Display the conversation
+curr_id = st.session_state.current_chat_id
+history = st.session_state.chat_sessions[curr_id]["messages"] if curr_id else []
+
+if not history:
+    st.markdown("<div style='text-align: center; margin-top: 50px;'><h1>TechHawk IT Help Desk</h1><p>Welcome to the secure Edwards Campus IT Assistant.</p></div>", unsafe_allow_html=True)
+
+for m in history:
+    col_l, col_r = st.columns(2)
+    if m["role"] == "user":
+        with col_r:
+            with st.chat_message("user"):
+                st.markdown(m["content"])
+                if m.get("file"): st.caption(f"File: {m['file']}")
     else:
-        # Update the timer to the current time
-        st.session_state.last_msg_time = current_time
+        with col_l:
+            with st.chat_message("assistant"): st.markdown(m["content"])
+
+# 7. INPUT HANDLING: Capture text and multiple file uploads
+if user_input := st.chat_input("Ask an IT question...", accept_file="multiple"):
+    text = user_input["text"]
+    files = user_input["files"]
+    title = text[:40] if text.strip() else (files[0].name[:40] if files else "New Chat")
+    
+    if not curr_id:
+        curr_id = str(uuid.uuid4())
+        st.session_state.chat_sessions[curr_id] = {"title": title, "pinned": False, "messages": []}
+        st.session_state.current_chat_id = curr_id
+    
+    st.session_state.chat_sessions[curr_id]["messages"].append({
+        "role": "user", "content": text if text.strip() else "[File Uploaded]", "file": files[0].name if files else None
+    })
+    st.rerun()
+
+# 8. AI GENERATION: Process the query through the RAG chain
+if curr_id and history and history[-1]["role"] == "user":
+    with st.spinner("TechHawk is thinking..."):
+        # Start a timer to prevent the AI from responding too fast
+        start_time = time.time()
         
-        # Show user message on screen
-        st.chat_message("user").markdown(user_query)
-        st.session_state.messages.append({"role": "user", "content": user_query})
+        try:
+            # Send the user query to the AI brain
+            ai_answer = st.session_state.rag_chain.invoke(history[-1]["content"])
+        except Exception as e:
+            # Log the technical error in the terminal for your eyes only
+            print(f"API Error encountered: {e}")
+            # Show the user the "Busy" message you had before
+            ai_answer = "The system is currently busy. Please try again in a minute."
         
-        # Show a loading spinner while the AI searches
-        with st.spinner("Searching official IT Manuals..."):
-            try:
-                # Send the query through the LangChain pipeline
-                ai_answer = rag_chain.invoke(user_query)
-                
-            except Exception as e:
-                # If Google crashes or rate-limits us, show an error instead of crashing the app
-                ai_answer = "The system is currently receiving too many requests. Please try again in a minute."
-                print(f"API Error encountered: {e}") # Logs the real error in your terminal
-        
-        # Show AI response on screen
-        with st.chat_message("assistant"):
-            st.markdown(ai_answer)
-        st.session_state.messages.append({"role": "assistant", "content": ai_answer})
+        # Ensure the spinner stays visible for at least 1.5 seconds for better UI feel
+        elapsed = time.time() - start_time
+        if elapsed < 1.5:
+            time.sleep(1.5 - elapsed)
+            
+    # Save the assistant's answer and refresh the screen
+    st.session_state.chat_sessions[curr_id]["messages"].append({"role": "assistant", "content": ai_answer})
+    st.rerun()
