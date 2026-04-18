@@ -34,7 +34,7 @@ def build_database():
     print("Connecting to local Chroma database...")
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     
-    # 6. The "Throttle" Loop (Bypasses the 429 Error)
+    # 6. The "Throttle" Loop (Prevents the 429 Error)
     batch_size = 90  # Keep it under the 100 limit
     
     for i in range(0, len(chunks), batch_size):
@@ -46,7 +46,7 @@ def build_database():
         
         # If there are still more chunks to process, pause the script
         if i + batch_size < len(chunks):
-            print("Sleeping for 60 seconds to respect Google's Free Tier speed limit...")
+            print("Pausing for 60 seconds to limit requests per minute")
             time.sleep(60)
             
     print("Phase A Complete! The local ChromaDB vector store is ready.")
