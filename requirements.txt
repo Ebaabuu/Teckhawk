@@ -7,3 +7,4 @@ langchain-chroma
 chromadb
 python-dotenv
 markdown
+langchain-openai
