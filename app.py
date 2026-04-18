@@ -10,9 +10,22 @@ from langchain_core.messages import HumanMessage, AIMessage
 st.set_page_config(page_title="TechHawk IT Assistant", layout="wide")
 apply_custom_styles()
 
-# 2. AI INITIALIZATION: Load the RAG logic once and store it
-if "rag_chain" not in st.session_state:
-    st.session_state.rag_chain = load_rag_chain()
+# --- NEW: AI Engine Switchboard ---
+st.sidebar.markdown("### Engine Benchmark")
+selected_model = st.sidebar.selectbox(
+    "Active LLM:",
+    ("Gemini 2.5 Flash", "ChatGPT (GPT-5.4 Mini)"),
+    index=0
+)
+st.sidebar.divider()
+
+# 2. AI INITIALIZATION: Load the RAG logic and watch for model changes
+if "rag_chain" not in st.session_state or st.session_state.get("current_model") != selected_model:
+    with st.spinner(f"Booting {selected_model}..."):
+        st.session_state.rag_chain = load_rag_chain(selected_model)
+        st.session_state.current_model = selected_model
+
+# ... (Keep the rest of app.py exactly the same) ...
 
 # 3. SESSION STATE: Keep track of history and current active chat
 if "chat_sessions" not in st.session_state: st.session_state.chat_sessions = {}
@@ -111,7 +124,7 @@ if curr_id and history and history[-1]["role"] == "user":
             
         except Exception as e:
             print(f"API Error encountered: {e}")
-            ai_answer = "The system is currently busy. Please try again in a minute."
+            ai_answer = "API Error: Check Terminal"
         
         elapsed = time.time() - start_time
         if elapsed < 1.5:
