@@ -1,5 +1,5 @@
 import os
-import time  # <-- NEW: We need this to pause the script
+import time  
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -24,7 +24,11 @@ def build_database():
 
     # 3. Split the manuals into bite-sized paragraphs
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = text_splitter.split_documents(documents)
+    raw_chunks = text_splitter.split_documents(documents)
+    
+    # --- FIX 1: Filter out any empty or whitespace-only chunks ---
+    chunks = [chunk for chunk in raw_chunks if chunk.page_content.strip()]
+    
     print(f"Success: Split documents into {len(chunks)} chunks.")
 
     # 4. Initialize the Google Text Embedding Model
@@ -34,15 +38,28 @@ def build_database():
     print("Connecting to local Chroma database...")
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     
-    # 6. The "Throttle" Loop (Prevents the 429 Error)
-    batch_size = 90  # Keep it under the 100 limit
+    # 6. The "Throttle" Loop (With Defensive Fallback)
+    batch_size = 90  
     
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i + batch_size]
         print(f"Translating batch {i//batch_size + 1} of {(len(chunks)//batch_size) + 1}...")
         
-        # Add this specific batch to the database
-        vectorstore.add_documents(batch)
+        try:
+            # First, attempt to process the whole batch of 90 at once
+            vectorstore.add_documents(batch)
+            
+        except IndexError:
+            # --- FIX 2: If Google dropped a chunk, fall back to 1-by-1 ---
+            print("API rejected a chunk! Isolating the blocked text...")
+            
+            for single_chunk in batch:
+                try:
+                    vectorstore.add_documents([single_chunk])
+                except IndexError:
+                    # Skip the blocked chunk and print a preview so you know what was flagged
+                    snippet = single_chunk.page_content.replace("\n", " ")[:60]
+                    print(f"Blocked & Skipped: '{snippet}...'")
         
         # If there are still more chunks to process, pause the script
         if i + batch_size < len(chunks):
