@@ -3,6 +3,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain_chroma import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -35,6 +36,8 @@ def load_rag_chain(selected_model="Gemini 2.5 Flash"):
             llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
         elif selected_model == "ChatGPT (GPT-5.4 Mini)":
             llm = ChatOpenAI(model="gpt-5.4-mini", temperature=0.3)
+        elif selected_model == "Ollama (Local)":
+            llm = ChatOllama(model="llama3.2", temperature=0.3)
         else:
             raise ValueError(f"Unknown model: {selected_model}")
             

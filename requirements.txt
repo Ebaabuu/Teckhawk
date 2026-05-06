@@ -8,3 +8,4 @@ chromadb
 python-dotenv
 markdown
 langchain-openai
+langchain-ollama

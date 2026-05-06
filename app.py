@@ -14,7 +14,7 @@ apply_custom_styles()
 st.sidebar.markdown("### Engine Benchmark")
 selected_model = st.sidebar.selectbox(
     "Active LLM:",
-    ("Gemini 2.5 Flash", "ChatGPT (GPT-5.4 Mini)"),
+    ("Gemini 2.5 Flash", "ChatGPT (GPT-5.4 Mini)", "Ollama (Local)"),
     index=0
 )
 st.sidebar.divider()
@@ -78,12 +78,12 @@ for m in history:
     col_l, col_r = st.columns(2)
     if m["role"] == "user":
         with col_r:
-            with st.chat_message("user"):
+            with st.chat_message("user", avatar="user_icon.png"):
                 st.markdown(m["content"])
                 if m.get("file"): st.caption(f"File: {m['file']}")
     else:
         with col_l:
-            with st.chat_message("assistant"): st.markdown(m["content"])
+            with st.chat_message("assistant", avatar="hawk_icon.png"): st.markdown(m["content"])
 
 # 7. INPUT HANDLING: Capture text and multiple file uploads
 if user_input := st.chat_input("Ask an IT question...", accept_file="multiple"):
