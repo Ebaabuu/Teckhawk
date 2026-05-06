@@ -10,10 +10,22 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 load_dotenv()
 
-# --- NEW: Added selected_model parameter ---
 def load_rag_chain(selected_model="Gemini 2.5 Flash"):
+    """
+    Initializes and returns the Retrieval-Augmented Generation (RAG) pipeline.
+    Handles embedding, vector search, prompt injection, and LLM generation.
+    
+    Args:
+        selected_model (str): The generative model selected by the user in the UI.
+        
+    Returns:
+        Runnable: A compiled LangChain pipeline, or None if initialization fails.
+    """
     try:
-        # 1. API Key Validation
+        # ==========================================
+        # 1. API Security Validation
+        # ==========================================
+        # Fail early if keys are missing to prevent cryptic LangChain crash traces
         if not os.getenv("GOOGLE_API_KEY"):
             st.error("Google API Key missing! Please check your .env file.")
             return None
@@ -22,16 +34,26 @@ def load_rag_chain(selected_model="Gemini 2.5 Flash"):
             st.error("OpenAI API Key missing! Please check your .env file.")
             return None
         
-        # 2. Control Variable: ALWAYS use Google Embeddings for the DB
+        # ==========================================
+        # 2. Vector Store & Retriever Initialization
+        # ==========================================
+        # MUST use Gemini Embeddings regardless of selected LLM, 
+        # as the ChromaDB database was compiled using this specific mathematical model.
         embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
         vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
         
+        # Configure Maximal Marginal Relevance (MMR) search logic.
+        # fetch_k = initial broad pool, k = final filtered chunks sent to LLM.
         retriever = vectorstore.as_retriever(
             search_type="mmr",
             search_kwargs={"k": 3, "fetch_k": 10, "lambda_mult": 0.5}
         )
         
-        # 3. Switchboard Logic: Instantiate the requested LLM
+        # ==========================================
+        # 3. LLM Switchboard
+        # ==========================================
+        # Instantiate the specific Generative Model requested by the Streamlit frontend.
+        # Temperature set to 0.3 to favor factual accuracy over creative hallucination.
         if selected_model == "Gemini 2.5 Flash":
             llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
         elif selected_model == "ChatGPT (GPT-5.4 Mini)":
@@ -41,8 +63,9 @@ def load_rag_chain(selected_model="Gemini 2.5 Flash"):
         else:
             raise ValueError(f"Unknown model: {selected_model}")
             
-        # ... (Keep your system_prompt, ChatPromptTemplate, and return statement EXACTLY the same) ...
-        
+        # ==========================================
+        # 4. Prompt Engineering
+        # ==========================================
         system_prompt = (
             "You are the official TechHawk IT Help Desk Assistant for the Edwards Campus. "
             "Use the following pieces of retrieved context to answer the question. "
@@ -53,14 +76,19 @@ def load_rag_chain(selected_model="Gemini 2.5 Flash"):
             "Context from User Uploaded Files:\n{file_context}"
         )
         
-        # --- NEW: Added MessagesPlaceholder for chat_history ---
+        # Construct the final prompt array handling system instructions, memory, and current input
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             MessagesPlaceholder(variable_name="chat_history"), 
             ("human", "{input}"),
         ])
         
-        # --- NEW: Adjusted the chain to handle dictionary inputs ---
+        # ==========================================
+        # 5. LCEL Pipeline Construction
+        # ==========================================
+        # Dictionary dynamically maps the incoming request payload to the prompt variables.
+        # It executes the retriever using the "input" string, formats the resulting docs,
+        # and passes everything through the Prompt -> LLM -> String Parser.
         return (
             {
                 "context": (lambda x: x["input"]) | retriever | (lambda docs: "\n\n".join(d.page_content for d in docs)), 
@@ -71,5 +99,6 @@ def load_rag_chain(selected_model="Gemini 2.5 Flash"):
             | prompt | llm | StrOutputParser()
         )
     except Exception as e:
+        # Catch network timeouts or model instantiation failures
         st.error(f"Error loading AI: {e}")
         return None

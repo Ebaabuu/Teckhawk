@@ -6,13 +6,22 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
 
-# 1. Securely load the API key
+# Load environment variables (API keys)
 load_dotenv()
 
 def build_database():
-    print("Reading IT Manuals...")
+    """
+    Ingests local Markdown documentation, chunks the text, and generates mathematical 
+    embeddings using Google's Gemini API. The resulting vectors are stored locally 
+    in a persistent ChromaDB instance for retrieval-augmented generation (RAG).
+    """
+    print("Initializing Knowledge Base Ingestion...")
 
-    # 2. Load all Markdown files from the 'docs' folder
+    # ==========================================
+    # 1. Document Loading
+    # ==========================================
+    # Crawl the 'docs' directory for all markdown files. 
+    # Enforce UTF-8 encoding to prevent Windows/Mac character map clashes.
     loader = DirectoryLoader('./docs', glob="**/*.md", loader_cls=TextLoader, loader_kwargs={'encoding': 'utf-8'})
     documents = loader.load()
     
@@ -22,23 +31,33 @@ def build_database():
 
     print(f"Success: Loaded {len(documents)} document(s).")
 
-    # 3. Split the manuals into chunks
+    # ==========================================
+    # 2. Text Splitting & Chunking
+    # ==========================================
+    # Break large manuals into smaller semantic chunks for the vector database.
+    # chunk_overlap ensures that sentences at the edge of a chunk don't lose context.
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     raw_chunks = text_splitter.split_documents(documents)
     
     # Filter out any empty chunks
     chunks = [chunk for chunk in raw_chunks if chunk.page_content.strip()]
-    
     print(f"Success: Split documents into {len(chunks)} chunks.")
 
-    # 4. Initialize the Google Text Embedding Model
+    # ==========================================
+    # 3. Vector Database Initialization
+    # ==========================================
+    # Initialize the Google Text Embedding Model
     embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
-
-    # 5. Initialize the database connection
     print("Connecting to local ChromaDB database...")
+    
+    # Instantiate the database connector pointing to the local hard drive
     vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
     
-    # 6. Separate chunks into batches, Loop through batches and translate
+    # ==========================================
+    # 4. Batch Processing & Rate Limit Management
+    # ==========================================
+    # The free tier of the Google Gemini API has strict Requests-Per-Minute (RPM) limits.
+    # We process chunks in batches to optimize network calls, then pause to respect the rate wall.
     batch_size = 90  
     
     for i in range(0, len(chunks), batch_size):
@@ -50,7 +69,9 @@ def build_database():
             vectorstore.add_documents(batch)
             
         except IndexError:
-            # If Google drops a chunk, translate them 1-by-1
+            # Google's API will throw an IndexError if its safety filter flags a specific chunk
+            # (e.g., mistaking IT security policies for hacking instructions).
+            # This alternate method drops to 1-by-1 processing to isolate and skip the offending chunk.
             print("API rejected a chunk! Isolating the blocked text...")
             
             for single_chunk in batch:
@@ -59,9 +80,9 @@ def build_database():
                 except IndexError:
                     # Skip the blocked chunk and print a preview to show what was flagged
                     snippet = single_chunk.page_content.replace("\n", " ")[:60]
-                    print(f"Blocked & Skipped: '{snippet}...'")
+                    print(f"Blocked by API & Skipped: '{snippet}...'")
         
-        # If there are still more chunks to process, pause the script to stay under limit
+        # If there are more batches remaining, enforce a cooldown period to reset the RPM limit
         if i + batch_size < len(chunks):
             print("Pausing for 60 seconds to limit requests per minute")
             time.sleep(60)
