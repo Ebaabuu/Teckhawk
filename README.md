@@ -64,13 +64,6 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 python ingest.py
 
-### How the Search Works (k vs fetch_k)
-During ingestion and retrieval, TechHawk uses MMR (Maximal Marginal Relevance) to find the best answers:
-* **fetch_k (The Wide Net):** The initial number of text chunks the database pulls based strictly on relevance (e.g., pulling the top 10 paragraphs).
-* **k (The Final Cut):** The final number of chunks that survive the diversity filter and actually get sent to the LLM (e.g., filtering those 10 down to the 3 most unique paragraphs to save tokens).
-
----
-
 ## Running the Application
 
 Launch the TechHawk Streamlit interface:
