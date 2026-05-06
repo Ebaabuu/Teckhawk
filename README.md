@@ -8,7 +8,7 @@ TechHawk serves as a highly accurate, conversational IT assistant. It securely s
 
 ## Key Features
 
-* **Multi-Model Switchboard:** Seamlessly toggle between Google Gemini 2.5 Flash and OpenAI ChatGPT (GPT-5.4 Mini) via the sidebar UI to compare generation speed and answer accuracy in real-time.
+* **Multi-Model Switchboard:** Seamlessly toggle between Google Gemini 2.5 Flash, Ollama, and OpenAI ChatGPT (GPT-5.4 Mini) via the sidebar UI to compare generation speed and answer accuracy in real-time.
 * **Persistent Chat Sessions:** Chat history is dynamically saved. Users can pin, rename, share, and delete previous conversations.
 * **Local Vector Database:** Built using LangChain and ChromaDB, the application stores data embeddings locally on the hard drive, ensuring data privacy and drastically reducing cloud compute costs.
 * **Hybrid Retrieval:** Utilizes Maximal Marginal Relevance (MMR) search logic to ensure the AI receives diverse, highly accurate context from the IT manuals rather than redundant paragraphs.
@@ -46,31 +46,14 @@ Crucial Setup Note for New Computers: If installing Python on a brand-new Window
 git clone https://github.com/your-username/techhawk-capstone.git
 cd techhawk-capstone
 
-### 2. Set Up a Virtual Environment
-You cannot copy a virtual environment from another PC. You must build a fresh one.
-
-# Create the environment
-python -m venv .venv
-
-# Activate it (Windows Command Prompt)
-.\.venv\Scripts\activate
-
-# Activate it (Windows PowerShell)
-.\.venv\Scripts\Activate.ps1
-
-# Activate it (Mac/Linux)
-source .venv/bin/activate
-
-### 3. Install Dependencies
+### 2. Install Dependencies
 pip install -r requirements.txt
 
-### 4. Configure Environment Variables & Security
+### 3. Configure Environment Variables & Security
 You must provide your own API keys. Create a file named .env in the root directory and add:
 
 GOOGLE_API_KEY=your_google_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
-
-SECURITY ALERT: Never commit your .env file to Git. If you ever accidentally upload a live API key, immediately revoke and rotate it in your Google/OpenAI developer dashboard to prevent unauthorized billing.
 
 ---
 
